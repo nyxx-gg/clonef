@@ -500,6 +500,95 @@
   <div id="gallery" class="gallery" aria-live="polite"></div>
 </main>
 
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCuu2b0I2D4UX-tFJu-4dEXwZAU0Koui6U",
+    authDomain: "jokes-on-you-ea61b.firebaseapp.com",
+    projectId: "jokes-on-you-ea61b",
+    storageBucket: "jokes-on-you-ea61b.firebasestorage.app",
+    messagingSenderId: "831999849916",
+    appId: "1:831999849916:web:d5b4ffff5ce09605c0a7b9",
+    measurementId: "G-8TNMSY9H2G"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Register user
+  async function registerUser(username, password, profilePicDataUrl = null) {
+    const email = username.includes('@') ? username : `${username}@jokesonyou.fake`;
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    await updateProfile(user, { displayName: username, photoURL: profilePicDataUrl || undefined });
+    await setDoc(doc(db, "users", user.uid), {
+      username: username,
+      email: email,
+      profilePic: profilePicDataUrl || "",
+      created: new Date().toISOString()
+    });
+    return user;
+  }
+
+  // Login user
+  async function loginUser(username, password) {
+    const email = username.includes('@') ? username : `${username}@jokesonyou.fake`;
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  }
+
+  // Wire up register button
+  document.getElementById('landingRegBtn').addEventListener('click', async () => {
+    const u = document.getElementById('landingRegUser').value.trim();
+    const p = document.getElementById('landingRegPass').value;
+    const p2 = document.getElementById('landingRegPass2').value;
+    document.getElementById('landingRegMsg').textContent = '';
+    if (!u) { document.getElementById('landingRegUserErr').textContent = 'Enter a username'; return; } else { document.getElementById('landingRegUserErr').textContent = ''; }
+    if (!p || p.length < 6) { document.getElementById('landingRegPassErr').textContent = 'Password must be 6+ chars'; return; } else { document.getElementById('landingRegPassErr').textContent = ''; }
+    if (p !== p2) { document.getElementById('landingRegPass2Err').textContent = 'Passwords do not match'; return; } else { document.getElementById('landingRegPass2Err').textContent = ''; }
+    try {
+      let avatarData = null;
+      try {
+        const picInput = document.getElementById('landingRegPic');
+        if (picInput && picInput.files && picInput.files[0]) {
+          const file = picInput.files[0];
+          avatarData = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(file);
+          });
+        }
+      } catch (e) { console.warn('Could not read provided profile picture', e); }
+      await registerUser(u, p, avatarData);
+      document.getElementById('landingRegMsg').textContent = 'Registration successful!';
+      // Optionally hide auth screen or update UI here
+    } catch (err) {
+      console.error('register error', err);
+      document.getElementById('landingRegMsg').textContent = err.message === 'username_taken' ? 'username taken' : (err.message || 'Registration failed');
+    }
+  });
+
+  // Wire up login button
+  document.getElementById('landingLoginBtn').addEventListener('click', async () => {
+    const u = document.getElementById('landingLoginUser').value.trim();
+    const p = document.getElementById('landingLoginPass').value;
+    document.getElementById('landingLoginMsg').textContent = '';
+    try {
+      await loginUser(u, p);
+      document.getElementById('landingLoginMsg').textContent = 'Login successful!';
+      // Optionally hide auth screen or update UI here
+    } catch (err) {
+      console.error('login error', err);
+      document.getElementById('landingLoginMsg').textContent = err.message === 'wrong_credentials' ? 'wrong credentials' : (err.message || 'Login failed');
+    }
+  });
+</script>
+
 <script>
 /* ========== Configuration ========== */
 /* Set this later to your deployed Google Apps Script Web App URL */
