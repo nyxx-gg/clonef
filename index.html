@@ -1537,6 +1537,24 @@ window.addEventListener('DOMContentLoaded', () => {
       document.getElementById('landingLoginMsg').textContent = err.message === 'wrong_credentials' ? 'wrong credentials' : (err.message || 'Login failed');
     }
   });
+
+  // Listen for Firebase Auth state changes and update UI accordingly
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      // User is signed in, update UI or redirect as needed
+      // Example: hide auth modal, show profile modal, or reload page
+      const authScreen = document.querySelector('.auth-screen');
+      if (authScreen) authScreen.classList.add('hidden');
+      // Optionally, show profile modal or update user info
+      // const profileModal = document.getElementById('profileModal');
+      // if (profileModal) profileModal.classList.remove('hidden');
+    } else {
+      // User is signed out, show auth modal
+      const authScreen = document.querySelector('.auth-screen');
+      if (authScreen) authScreen.classList.remove('hidden');
+    }
+  });
 });
 </script>
 
