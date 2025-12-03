@@ -500,99 +500,10 @@
   <div id="gallery" class="gallery" aria-live="polite"></div>
 </main>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCuu2b0I2D4UX-tFJu-4dEXwZAU0Koui6U",
-    authDomain: "jokes-on-you-ea61b.firebaseapp.com",
-    projectId: "jokes-on-you-ea61b",
-    storageBucket: "jokes-on-you-ea61b.firebasestorage.app",
-    messagingSenderId: "831999849916",
-    appId: "1:831999849916:web:d5b4ffff5ce09605c0a7b9",
-    measurementId: "G-8TNMSY9H2G"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  // Register user
-  async function registerUser(username, password, profilePicDataUrl = null) {
-    const email = username.includes('@') ? username : `${username}@jokesonyou.fake`;
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    await updateProfile(user, { displayName: username, photoURL: profilePicDataUrl || undefined });
-    await setDoc(doc(db, "users", user.uid), {
-      username: username,
-      email: email,
-      profilePic: profilePicDataUrl || "",
-      created: new Date().toISOString()
-    });
-    return user;
-  }
-
-  // Login user
-  async function loginUser(username, password) {
-    const email = username.includes('@') ? username : `${username}@jokesonyou.fake`;
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
-  }
-
-  // Wire up register button
-  document.getElementById('landingRegBtn').addEventListener('click', async () => {
-    const u = document.getElementById('landingRegUser').value.trim();
-    const p = document.getElementById('landingRegPass').value;
-    const p2 = document.getElementById('landingRegPass2').value;
-    document.getElementById('landingRegMsg').textContent = '';
-    if (!u) { document.getElementById('landingRegUserErr').textContent = 'Enter a username'; return; } else { document.getElementById('landingRegUserErr').textContent = ''; }
-    if (!p || p.length < 6) { document.getElementById('landingRegPassErr').textContent = 'Password must be 6+ chars'; return; } else { document.getElementById('landingRegPassErr').textContent = ''; }
-    if (p !== p2) { document.getElementById('landingRegPass2Err').textContent = 'Passwords do not match'; return; } else { document.getElementById('landingRegPass2Err').textContent = ''; }
-    try {
-      let avatarData = null;
-      try {
-        const picInput = document.getElementById('landingRegPic');
-        if (picInput && picInput.files && picInput.files[0]) {
-          const file = picInput.files[0];
-          avatarData = await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(r.result);
-            r.onerror = () => reject(r.error);
-            r.readAsDataURL(file);
-          });
-        }
-      } catch (e) { console.warn('Could not read provided profile picture', e); }
-      await registerUser(u, p, avatarData);
-      document.getElementById('landingRegMsg').textContent = 'Registration successful!';
-      // Optionally hide auth screen or update UI here
-    } catch (err) {
-      console.error('register error', err);
-      document.getElementById('landingRegMsg').textContent = err.message === 'username_taken' ? 'username taken' : (err.message || 'Registration failed');
-    }
-  });
-
-  // Wire up login button
-  document.getElementById('landingLoginBtn').addEventListener('click', async () => {
-    const u = document.getElementById('landingLoginUser').value.trim();
-    const p = document.getElementById('landingLoginPass').value;
-    document.getElementById('landingLoginMsg').textContent = '';
-    try {
-      await loginUser(u, p);
-      document.getElementById('landingLoginMsg').textContent = 'Login successful!';
-      // Optionally hide auth screen or update UI here
-    } catch (err) {
-      console.error('login error', err);
-      document.getElementById('landingLoginMsg').textContent = err.message === 'wrong_credentials' ? 'wrong credentials' : (err.message || 'Login failed');
-    }
-  });
-</script>
-
 <script>
 /* ========== Configuration ========== */
 /* Set this later to your deployed Google Apps Script Web App URL */
-const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxcBJdfhFl_kEyMTKCyuZ4R_MiFXi5wlZfdeDKQTMoBSFOgU-ytAH9wzQQ8XcNFbSuU/exec";
+const BACKEND_URL = ""; // e.g. "https://script.google.com/macros/s/XXXXX/exec"
 
 /* Max file size in bytes (default 15 MB). Adjust if you want bigger/smaller uploads. */
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
@@ -674,7 +585,7 @@ async function upload() {
   descInput.value = '';
 }
 
-// Update processFile to POST to Google Apps Script
+/* Process a File object: read as DataURL, optionally POST to backend, then add to gallery */
 async function processFile(file, description) {
   if (!file) return;
   if (file.size > MAX_FILE_SIZE) {
@@ -1341,58 +1252,219 @@ function setupCropInteractions() {
   if (cancelBtn) cancelBtn.onclick = function() { cropModal.classList.remove('open'); cropModal.setAttribute('aria-hidden','true'); };
 
   // done: perform crop and set avatar
-      if (doneBtn) doneBtn.onclick = async function() {
+      if (doneBtn) doneBtn.onclick = function() {
     try {
-      const cropImg = document.getElementById('cropImage');
-      const cropViewport = document.getElementById('cropViewport');
       const vw = cropViewport.clientWidth;
       const vh = cropViewport.clientHeight;
-      const s = 1; // scale (if you use zoom, update accordingly)
+      const s = baseScale * scale;
       const naturalW = cropImg.naturalWidth;
       const naturalH = cropImg.naturalHeight;
-      const nx = Math.max(0, (-cropImg.offsetLeft) / s);
-      const ny = Math.max(0, (-cropImg.offsetTop) / s);
+      // top-left in natural coords
+      const nx = Math.max(0, (-imgLeft) / s);
+      const ny = Math.max(0, (-imgTop) / s);
       const nw = Math.min(naturalW - nx, vw / s);
       const nh = Math.min(naturalH - ny, vh / s);
+      // draw to canvas as square (use vw x vh area)
       const outSize = 200;
       const canvas = document.createElement('canvas');
       canvas.width = outSize; canvas.height = outSize;
       const ctx = canvas.getContext('2d');
+      // maintain aspect by drawing the vw/vh region scaled to outSize
       ctx.drawImage(cropImg, nx, ny, nw, nh, 0, 0, outSize, outSize);
       const dataUrl = canvas.toDataURL('image/png');
       const avatar = document.getElementById('profileAvatarImg');
       if (avatar) avatar.src = dataUrl;
-      // save to localStorage (permanent)
-      const key = profileStorageKey(username);
-      localStorage.setItem(key, dataUrl);
-      // show toast
-      showToast('Profile picture updated!');
-      // close crop modal
-      cropModal.classList.remove('open');
-      cropModal.setAttribute('aria-hidden','true');
-    } catch (err) {
-      console.error('Crop error', err);
-      alert('Failed to crop image. Please try again.');
-    }
+      try {
+        // store per-user profile pic if logged in; do NOT write the legacy
+        // `profile_pic` key for anonymous users (that caused shared avatars).
+        const authNow = JSON.parse(sessionStorage.getItem('auth_user') || '{}');
+        const usernameNow = authNow && authNow.username ? authNow.username : null;
+        if (usernameNow) {
+          const key = profileStorageKey(usernameNow);
+          localStorage.setItem(key, dataUrl);
+        }
+      } catch(e){}
+    } catch (err) { console.error('Crop failed', err); }
+    cropModal.classList.remove('open'); cropModal.setAttribute('aria-hidden','true');
   };
 }
 
-// Storage key for per-user profile pictures
-function profileStorageKey(username) {
-  return 'profile_pic_' + (username || '').toLowerCase();
+// show a brief welcome toast that slides up then down (1s total)
+function showWelcomeToast(username) {
+  if (!username) return;
+  const existing = document.querySelector('.welcome-toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.className = 'welcome-toast';
+  el.textContent = `Welcome back, ${username}`;
+  document.body.appendChild(el);
+  // force reflow then animate
+  void el.offsetWidth;
+  el.classList.add('animate');
+  el.addEventListener('animationend', () => { el.remove(); });
 }
 
-// Show temporary toast message
-function showToast(message) {
-  const toast = document.createElement('div');
-  toast.className = 'welcome-toast animate';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.classList.remove('animate');
-    setTimeout(() => { document.body.removeChild(toast); }, 300);
-  }, 2500);
+/* ========== Landing auth logic (login/register) ========== */
+// helper: SHA-256 hash a string and return base64
+async function hashPassword(password) {
+  const enc = new TextEncoder();
+  const data = enc.encode(password);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  // convert to base64
+  const arr = Array.from(new Uint8Array(hash));
+  const bin = arr.map(b => String.fromCharCode(b)).join('');
+  return btoa(bin);
 }
+
+// demo user store helpers (replace these with backend calls)
+function getDemoUsers() {
+  try { return JSON.parse(localStorage.getItem('demo_users') || '[]'); } catch (e) { return []; }
+}
+function saveDemoUsers(list) { try { localStorage.setItem('demo_users', JSON.stringify(list)); } catch(e){} }
+
+// profile storage key helper (per-user)
+function profileStorageKey(username) {
+  if (!username) return 'profile_pic';
+  return 'profile_pic_' + username.toString().toLowerCase();
+}
+
+async function registerLanding(username, password, avatarData = null) {
+  // placeholder for backend POST /register
+  const users = getDemoUsers();
+  if (!username || !password) throw new Error('username and password required');
+  const exists = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  if (exists) throw new Error('username_taken');
+  const pwHash = await hashPassword(password);
+  const userObj = { username, pwHash, created: new Date().toISOString() };
+  if (avatarData) {
+    try {
+      userObj.avatarData = avatarData;
+      // store per-user key for backwards compatibility
+      localStorage.setItem(profileStorageKey(username), avatarData);
+    } catch (e) { /* ignore storage errors */ }
+  }
+  users.push(userObj);
+  saveDemoUsers(users);
+  // set auth_user for now (session-only so user is logged-out on close)
+  const token = 'local_' + Date.now();
+  const auth = { username, token };
+  try { sessionStorage.setItem('auth_user', JSON.stringify(auth)); } catch(e){}
+  return auth;
+}
+
+async function loginLanding(username, password) {
+  // placeholder for backend POST /login
+  const users = getDemoUsers();
+  const found = users.find(u => u.username.toLowerCase() === (username||'').toLowerCase());
+  if (!found) throw new Error('wrong_credentials');
+  const pwHash = await hashPassword(password);
+  if (pwHash !== found.pwHash) throw new Error('wrong_credentials');
+  const token = 'local_' + Date.now();
+  const auth = { username: found.username, token };
+  try { sessionStorage.setItem('auth_user', JSON.stringify(auth)); } catch(e){}
+  return auth;
+}
+
+// wire landing UI
+document.addEventListener('DOMContentLoaded', () => {
+  const authScreen = document.getElementById('authScreen');
+  const tabLogin = document.getElementById('tabLogin');
+  const tabRegister = document.getElementById('tabRegister');
+  const loginBox = document.getElementById('loginBox');
+  const registerBox = document.getElementById('registerBox');
+
+  function showLogin() { tabLogin.classList.add('active'); tabRegister.classList.remove('active'); loginBox.classList.remove('hidden'); registerBox.classList.add('hidden'); }
+  function showRegister() { tabLogin.classList.remove('active'); tabRegister.classList.add('active'); loginBox.classList.add('hidden'); registerBox.classList.remove('hidden'); }
+
+  tabLogin.addEventListener('click', showLogin);
+  tabRegister.addEventListener('click', showRegister);
+
+  // login handler
+  document.getElementById('landingLoginBtn').addEventListener('click', async () => {
+    const u = document.getElementById('landingLoginUser').value.trim();
+    const p = document.getElementById('landingLoginPass').value;
+    document.getElementById('landingLoginMsg').textContent = '';
+    try {
+      await loginLanding(u, p);
+      // load avatar from demo users if present and set into per-user storage & UI
+      try {
+        const users = getDemoUsers();
+        const found = users.find(x => x.username && x.username.toLowerCase() === (u || '').toLowerCase());
+        const avatarImg = document.getElementById('profileAvatarImg');
+        if (found && found.avatarData) {
+          try { localStorage.setItem(profileStorageKey(found.username), found.avatarData); } catch(e){}
+          if (avatarImg) avatarImg.src = found.avatarData;
+        } else {
+          // ensure we do not accidentally show a global legacy avatar for this user
+          try { localStorage.removeItem(profileStorageKey(u)); } catch(e){}
+          if (avatarImg) avatarImg.src = window.__DEFAULT_PROFILE_AVATAR || avatarImg.src;
+        }
+      } catch(e) { console.warn('Could not load avatar after login', e); }
+      // hide auth screen and update UI
+      if (authScreen) authScreen.classList.add('hidden');
+      // update profile and header
+      try { const stored = JSON.parse(sessionStorage.getItem('auth_user') || '{}'); if (stored && stored.username) { const userInfo = document.getElementById('userInfo'); if (userInfo) { userInfo.textContent = 'Welcome, ' + stored.username; userInfo.classList.remove('hidden'); } const loginHeaderBtn = document.getElementById('loginHeaderBtn'); if (loginHeaderBtn) loginHeaderBtn.classList.add('hidden'); const logoutBtn = document.getElementById('logoutBtn'); if (logoutBtn) logoutBtn.classList.remove('hidden'); if (window.showWelcomeToast) window.showWelcomeToast(stored.username); }} catch(e){}
+    } catch (err) {
+      console.error('login error', err);
+      document.getElementById('landingLoginMsg').textContent = err.message === 'wrong_credentials' ? 'wrong credentials' : (err.message || 'Login failed');
+    }
+  });
+
+  // register handler
+  document.getElementById('landingRegBtn').addEventListener('click', async () => {
+    const u = document.getElementById('landingRegUser').value.trim();
+    const p = document.getElementById('landingRegPass').value;
+    const p2 = document.getElementById('landingRegPass2').value;
+    document.getElementById('landingRegMsg').textContent = '';
+    if (!u) { document.getElementById('landingRegUserErr').textContent = 'Enter a username'; return; } else { document.getElementById('landingRegUserErr').textContent = ''; }
+    if (!p || p.length < 6) { document.getElementById('landingRegPassErr').textContent = 'Password must be 6+ chars'; return; } else { document.getElementById('landingRegPassErr').textContent = ''; }
+    if (p !== p2) { document.getElementById('landingRegPass2Err').textContent = 'Passwords do not match'; return; } else { document.getElementById('landingRegPass2Err').textContent = ''; }
+    try {
+      // check for optional profile picture and read as dataURL if present
+      let avatarData = null;
+      try {
+        const picInput = document.getElementById('landingRegPic');
+        if (picInput && picInput.files && picInput.files[0]) {
+          const file = picInput.files[0];
+          avatarData = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(file);
+          });
+        }
+      } catch (e) { console.warn('Could not read provided profile picture', e); }
+
+      await registerLanding(u, p, avatarData);
+      // hide auth screen and update UI
+      if (authScreen) authScreen.classList.add('hidden');
+      // update profile name display instantly
+      try { const stored = JSON.parse(sessionStorage.getItem('auth_user') || '{}'); if (stored && stored.username) { const userInfo = document.getElementById('userInfo'); if (userInfo) { userInfo.textContent = 'Welcome, ' + stored.username; userInfo.classList.remove('hidden'); } const loginHeaderBtn = document.getElementById('loginHeaderBtn'); if (loginHeaderBtn) loginHeaderBtn.classList.add('hidden'); const logoutBtn = document.getElementById('logoutBtn'); if (logoutBtn) logoutBtn.classList.remove('hidden'); if (window.showWelcomeToast) window.showWelcomeToast(stored.username); }} catch(e){}
+      // after registering, ensure avatar is visible in UI
+      try {
+        const key = profileStorageKey(u);
+        const pic = localStorage.getItem(key);
+        if (pic) {
+          const avatarImg = document.getElementById('profileAvatarImg');
+          if (avatarImg) avatarImg.src = pic;
+        }
+      } catch (e) { /* ignore */ }
+    } catch (err) {
+      console.error('register error', err);
+      document.getElementById('landingRegMsg').textContent = err.message === 'username_taken' ? 'username taken' : (err.message || 'Registration failed');
+    }
+  });
+
+  // show auth screen on load if no auth_user
+  const current = sessionStorage.getItem('auth_user');
+  if (!current) {
+    if (authScreen) authScreen.classList.remove('hidden');
+    showLogin();
+  } else {
+    if (authScreen) authScreen.classList.add('hidden');
+  }
+});
 </script>
+
 </body>
 </html>
