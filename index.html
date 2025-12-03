@@ -535,14 +535,11 @@ function createGalleryItem(imageSrc, description, filename) {
 }
 
 /* Add an image at the top of the gallery */
-function addImageToGallery(imageSrc, description, filename) {
+function addImageToGallery(imageSrc, description, filename, ownerId = null) {
   const gallery = document.getElementById('gallery');
   const item = createGalleryItem(imageSrc, description, filename);
-  // attach owner metadata when available (session-only auth)
-  try {
-    const auth = JSON.parse(sessionStorage.getItem('auth_user') || '{}');
-    if (auth && auth.username) item.dataset.owner = auth.username.toString();
-  } catch (e) { /* ignore */ }
+  // attach owner metadata from Firebase Auth
+  if (ownerId) item.dataset.owner = ownerId;
   // prepend - newest at top
   gallery.insertBefore(item, gallery.firstChild);
   // if search panel is open and a query exists, re-run search so newly added items are accounted for
@@ -605,36 +602,11 @@ async function processFile(file, description) {
     const base64 = extractBase64(dataUrl);
     const desc = (description || '').trim();
 
-    if (BACKEND_URL) {
-      try {
-        const body = new URLSearchParams({ file: base64, filename: file.name, desc });
-        const res = await fetch(BACKEND_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-          body
-        });
-
-        if (!res.ok) {
-          console.error('Upload failed', res.status, await res.text());
-          alert('Upload failed. Check console for details.');
-          return;
-        }
-
-        const text = await res.text();
-        let imageUrl = text;
-        try {
-          const json = JSON.parse(text);
-          imageUrl = json.url || json.imageUrl || json.link || text;
-        } catch (_) { /* not JSON */ }
-
-        addImageToGallery(imageUrl, desc, file.name);
-      } catch (err) {
-        console.error('Upload error', err);
-        alert('Upload failed (network). Check console.');
-      }
-    } else {
-      addImageToGallery(dataUrl, desc, file.name);
-    }
+    // TODO: Replace this with Cloudinary upload logic
+    // When Cloudinary is integrated, upload the image and get the URL, then save metadata to Firestore
+    // For now, just add to gallery with Firebase user as owner
+    const user = window.firebaseAuthUser || null;
+    addImageToGallery(dataUrl, desc, file.name, user ? user.uid : null);
   };
 
   reader.readAsDataURL(file);
@@ -1041,43 +1013,23 @@ function performSearch(query) {
 function openProfile() {
   const pm = document.getElementById('profileModal');
   if (!pm) return;
-  // populate username and avatar from localStorage or placeholder
+  // populate username and avatar from Firebase Auth
   const nameEl = document.getElementById('profileName');
   const avatarImg = document.getElementById('profileAvatarImg');
-  const storedUser = sessionStorage.getItem('auth_user');
-  let username = 'Username';
-  if (storedUser) {
-    try { username = JSON.parse(storedUser).username || username; } catch(e){}
-  }
+  const user = window.firebaseAuthUser || null;
+  let username = user && user.displayName ? user.displayName : 'Username';
   nameEl.textContent = username;
-  // load per-user profile pic if available. Do NOT fall back to the global
-  // legacy `profile_pic` for logged-in users (that caused shared avatars).
-  try {
-    const authNow = JSON.parse(sessionStorage.getItem('auth_user') || '{}');
-    if (authNow && authNow.username) {
-      const key = profileStorageKey(authNow.username);
-      const storedPic = localStorage.getItem(key);
-      if (storedPic) avatarImg.src = storedPic;
-      else avatarImg.src = window.__DEFAULT_PROFILE_AVATAR || avatarImg.src;
-    } else {
-      // when not logged-in, fall back to legacy key if present, otherwise default
-      const storedPic = localStorage.getItem('profile_pic');
-      if (storedPic) avatarImg.src = storedPic;
-      else avatarImg.src = window.__DEFAULT_PROFILE_AVATAR || avatarImg.src;
-    }
-  } catch (e) {
-    avatarImg.src = window.__DEFAULT_PROFILE_AVATAR || avatarImg.src;
-  }
+  // TODO: Load profile picture from Firestore or Cloudinary
+  avatarImg.src = user && user.photoURL ? user.photoURL : (window.__DEFAULT_PROFILE_AVATAR || avatarImg.src);
 
-  // build profile grid: attempt to show items that belong to the user (dataset.owner)
+  // build profile grid: show items that belong to the user (dataset.owner)
   const grid = document.getElementById('profileGrid');
   grid.innerHTML = '';
   const gallery = document.getElementById('gallery');
-  if (gallery) {
+  if (gallery && user) {
     const items = Array.from(gallery.children);
-    // prefer items with matching owner metadata; fallback: show recent items
-    const owned = items.filter(it => (it.dataset.owner || '').toLowerCase() === (username || '').toLowerCase());
-    // Show all owned items; if none are found, show all recent items (not limited to 12)
+    // show items with matching ownerId
+    const owned = items.filter(it => (it.dataset.owner || '') === user.uid);
     const toShow = owned.length ? owned : items;
     toShow.forEach(it => {
       const img = it.querySelector('img');
@@ -1088,7 +1040,6 @@ function openProfile() {
       thumb.src = img ? img.src : '';
       thumb.alt = img ? img.alt : 'post';
       thumb.addEventListener('click', () => {
-        // open in lightbox and close profile
         if (window.openLightbox) window.openLightbox(thumb.src, cap ? cap.textContent : '', thumb.alt || 'image');
         closeProfile();
       });
@@ -1100,11 +1051,19 @@ function openProfile() {
       grid.appendChild(tile);
     });
   }
+}
+// ...existing code...
+// Track Firebase user globally for gallery/profile logic
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+const auth1 = getAuth();
+window.firebaseAuthUser = null;
+onAuthStateChanged(auth1, (user) => {
+  window.firebaseAuthUser = user;
+});
 
   pm.classList.add('open');
   pm.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-}
 
 function closeProfile() {
   const pm = document.getElementById('profileModal');
@@ -1535,24 +1494,6 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error('login error', err);
       document.getElementById('landingLoginMsg').textContent = err.message === 'wrong_credentials' ? 'wrong credentials' : (err.message || 'Login failed');
-    }
-  });
-
-  // Listen for Firebase Auth state changes and update UI accordingly
-  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      // User is signed in, update UI or redirect as needed
-      // Example: hide auth modal, show profile modal, or reload page
-      const authScreen = document.querySelector('.auth-screen');
-      if (authScreen) authScreen.classList.add('hidden');
-      // Optionally, show profile modal or update user info
-      // const profileModal = document.getElementById('profileModal');
-      // if (profileModal) profileModal.classList.remove('hidden');
-    } else {
-      // User is signed out, show auth modal
-      const authScreen = document.querySelector('.auth-screen');
-      if (authScreen) authScreen.classList.remove('hidden');
     }
   });
 });
